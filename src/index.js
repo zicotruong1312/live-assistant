@@ -56,8 +56,23 @@ for (const file of eventFiles) {
   }
 }
 
-// ─── LẮNG NGHE INTERACTION TỪ SLASH COMMANDS ───────────────────
+// ─── LẮNG NGHE INTERACTION (SLASH COMMANDS + BUTTONS + MENUS) ──
+const ticketHandler = require('./events/ticketHandler');
+
 client.on('interactionCreate', async interaction => {
+  // Chuyển hướng Button và SelectMenu sang ticketHandler
+  if (interaction.isButton() || interaction.isAnySelectMenu()) {
+    try {
+      await ticketHandler(interaction);
+    } catch (err) {
+      console.error('[ticketHandler] Lỗi xử lý component:', err);
+      if (!interaction.replied && !interaction.deferred) {
+        await interaction.reply({ content: '❌ Có lỗi xảy ra, vui lòng thử lại.', ephemeral: true });
+      }
+    }
+    return;
+  }
+
   if (!interaction.isChatInputCommand()) return;
 
   const command = interaction.client.commands.get(interaction.commandName);
