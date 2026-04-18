@@ -1,8 +1,6 @@
 const DailyStats = require('../models/DailyStats');
 const { getTodayVN } = require('../utils/dateHelper');
-
-// In-memory map: userId → { startTime, guildId }
-const voiceSessions = new Map();
+const { voiceSessions } = require('../utils/voiceTracker');
 
 module.exports = {
   name: 'voiceStateUpdate',
@@ -12,25 +10,28 @@ module.exports = {
     const guildId  = newState.guild.id;
     const username = newState.member?.user?.username ?? 'Unknown';
 
+    // Bỏ qua bot
+    if (newState.member?.user?.bot) return;
+
     const wasInVoice = oldState.channelId !== null;
     const isInVoice  = newState.channelId !== null;
 
-    // ── User JOINED a voice channel ───────────────────────────────────────────
+    // ── User VỪA VÀO kênh Voice ───────────────────────────────────────────
     if (!wasInVoice && isInVoice) {
-      voiceSessions.set(userId, { startTime: Date.now(), guildId });
-      console.log(`🎙️  ${username} joined voice → timer started`);
+      voiceSessions.set(userId, { startTime: Date.now(), guildId, username });
+      console.log(`🎙️  ${username} joined voice → tracker started`);
       return;
     }
 
-    // ── User LEFT a voice channel ─────────────────────────────────────────────
+    // ── User VỪA THOÁT kênh Voice ──────────────────────────────────────────
     if (wasInVoice && !isInVoice) {
       const session = voiceSessions.get(userId);
-      if (!session) return; // bot restarted mid-session, skip
+      if (!session) return; // Nếu không có trong Map thì bỏ qua
 
       const durationSeconds = Math.floor((Date.now() - session.startTime) / 1000);
-      voiceSessions.delete(userId);
+      voiceSessions.delete(userId); // Xoá khỏi bộ nhớ tạm
 
-      if (durationSeconds < 1) return;
+      if (durationSeconds < 1) return; // Quá nhanh, không tính
 
       const today = getTodayVN();
 
@@ -43,15 +44,12 @@ module.exports = {
           },
           { upsert: true, new: true }
         );
-        console.log(`🔕 ${username} left voice → +${durationSeconds}s saved`);
+        console.log(`🔕 ${username} rời voice → cất nốt ${durationSeconds}s cuối vào DB`);
       } catch (err) {
         if (err.code !== 11000) {
           console.error('[voiceStateUpdate] Lỗi DB:', err.message);
         }
       }
     }
-
-    // ── User SWITCHED channel (was in voice, still in voice) ──────────────────
-    // Nothing to do: timer keeps running from original join time.
   }
 };

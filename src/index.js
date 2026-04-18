@@ -5,6 +5,7 @@ const path = require('path');
 const connectDB = require('./utils/connectDB');
 const startWebServer = require('./utils/webServer');
 const registerCronJobs = require('./utils/cronJobs');
+const { scanActiveVoices, startVoiceSyncLoop } = require('./utils/voiceTracker');
 
 const client = new Client({
   intents: [
@@ -81,7 +82,15 @@ client.on('interactionCreate', async interaction => {
 // ─── BOT SAN SÀNG HOẠT ĐỘNG ────────────────────────────────────
 client.once('ready', () => {
   console.log(`✅ ${client.user.tag} đã đăng nhập và sẵn sàng!`);
-  registerCronJobs(client); // Đăng ký cronjob khi bot ready
+  
+  // Đăng ký cronjob báo ngày / tuần
+  registerCronJobs(client); 
+  
+  // Quét ai đang ở sẵn trong Voice và nạp vào bộ đếm realtime
+  scanActiveVoices(client);
+  
+  // Kích hoạt đồng bộ Voice lên MongoDB mỗi 1 phút
+  startVoiceSyncLoop();
 });
 
 // Đăng nhập vào Discord
