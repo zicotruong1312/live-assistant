@@ -36,8 +36,6 @@ module.exports = {
     const attachment = message.attachments.first();
     if (!attachment.contentType || !attachment.contentType.startsWith('image/')) return;
 
-    const loadingMsg = await message.reply('⏳ Đang nhờ AI phân tích ảnh và chụp danh sách Voice...');
-
     try {
       // Snapshot người đang ngồi Voice lúc quăng ảnh
       let voiceSnapshot = [];
@@ -65,26 +63,16 @@ module.exports = {
         selectedPlayers: voiceSnapshot
       }).save();
 
-      // Phản hồi trong #live-result
-      let replyContent = `🎫 **Ticket #${ticketId} đã được tạo!**\n`;
-      replyContent += `> 🗺️ **Map:** \`${extractedData.map}\`\n`;
-      replyContent += `> 🎮 **Chế độ:** \`${extractedData.mode}\`\n`;
-      replyContent += `> 🏆 **Kết quả:** \`${extractedData.result}\`\n`;
-      replyContent += `> 👥 **Voice:** ${voiceSnapshot.length} người (${voiceSnapshot.map(id => `<@${id}>`).join(', ') || '_Không ai trong room_'})\n`;
-      replyContent += `\nTicket đã được gửi sang **#confirm-result** để sếp tổng duyệt! 🙌`;
-
-      if (!extractedData.isRanked) {
-        replyContent += `\n\n> ⚠️ **CẢNH BÁO:** Chế độ này không phải Đấu Hạng!`;
-      }
-
-      await loadingMsg.edit(replyContent);
+      // Chỉ thả reaction để báo hiệu đã nhận ảnh thành công (giữ kênh live-result sạch sẽ)
+      await message.react('✅');
 
       // Auto-post Ticket sang #confirm-result để sếp duyệt
       await postTicketToConfirmChannel(message.guild, newMatch);
 
     } catch (err) {
       console.error('[messageCreate] Lỗi tạo Ticket:', err);
-      await loadingMsg.edit('❌ Có lỗi xảy ra khi tạo Ticket. Vui lòng thử lại hoặc báo Admin.');
+      // Thả reaction lỗi nếu có vấn đề
+      await message.react('❌').catch(() => {});
     }
   }
 };

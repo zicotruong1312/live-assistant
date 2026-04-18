@@ -1,3 +1,4 @@
+const { EmbedBuilder } = require('discord.js');
 const LiveMatch = require('../models/LiveMatch');
 const UserLiveStats = require('../models/UserLiveStats');
 
@@ -8,6 +9,9 @@ const POINTS = {
   MVP_BONUS: 20   // Điểm thưởng thêm cho MVP (chỉ tính khi trận Thắng)
 };
 
+// Tên channel thông báo kết quả cộng điểm
+const BONUS_RESULT_CHANNEL = 'bonus-result';
+
 /**
  * Xử lý toàn bộ tương tác Buttons & Select Menus của hệ thống Ticket Live.
  * Được gọi từ index.js trong event interactionCreate.
@@ -15,9 +19,8 @@ const POINTS = {
 module.exports = async (interaction) => {
   if (!interaction.customId?.startsWith('live_')) return;
 
-  // Tách ticketId khỏi customId (ví dụ: live_players_TCK-1234 → TCK-1234)
   const customId = interaction.customId;
-  // ticketId là phần sau prefix 3 từ (live_xxx_)
+  // ticketId là phần sau prefix: live_xxx_ (split 2 phần đầu)
   const ticketId = customId.split('_').slice(2).join('_');
 
   const match = await LiveMatch.findOne({ ticketId });
@@ -27,12 +30,12 @@ module.exports = async (interaction) => {
 
   // ─── 1. Menu chọn danh sách người chơi ───
   if (customId.startsWith('live_players_')) {
-    match.selectedPlayers = interaction.values; // values = [] nếu chọn 0 người (cho phép không cộng ai)
+    match.selectedPlayers = interaction.values;
     await match.save();
 
     const msg = match.selectedPlayers.length === 0
       ? '✅ Đã xoá toàn bộ người chơi. Ticket này sẽ không cộng điểm cho ai khi Approve.'
-      : `✅ Đã cập nhật danh sách ${match.selectedPlayers.length} người chơi: ${match.selectedPlayers.map(id => `<@${id}>`).join(', ')}`;
+      : `✅ Đã cập nhật ${match.selectedPlayers.length} người chơi: ${match.selectedPlayers.map(id => `<@${id}>`).join(', ')}`;
 
     return interaction.reply({ content: msg, ephemeral: true });
   }
@@ -49,17 +52,7 @@ module.exports = async (interaction) => {
     return interaction.reply({ content: '🚫 Chỉ Admin mới có quyền duyệt hoặc từ chối Ticket.', ephemeral: true });
   }
 
-  // ─── 3. Nút Bỏ qua – Xem Ticket kế tiếp ───
-  if (customId.startsWith('live_skip_')) {
-    // Đánh dấu bị skip bằng cách đổi status → DECLINED tạm (hoặc thêm field skipCount, nhưng dùng DECLINED cho đơn giản)
-    // Thực ra ta chỉ cần ẩn message đi và gọi lại review
-    return interaction.update({
-      content: `⏭ Đã bỏ qua Ticket **#${ticketId}**. Gõ lại \`/livereview\` để xem Ticket tiếp theo.`,
-      embeds: [], components: []
-    });
-  }
-
-  // ─── 4. Nút Từ chối (Decline) ───
+  // ─── 3. Nút Từ chối (Decline) ───
   if (customId.startsWith('live_decline_')) {
     match.status = 'DECLINED';
     await match.save();
@@ -69,7 +62,7 @@ module.exports = async (interaction) => {
     });
   }
 
-  // ─── 5. Nút Duyệt (Win hoặc Lose) ───
+  // ─── 4. Nút Duyệt (Win hoặc Lose) ───
   const isWin  = customId.startsWith('live_approve_win_');
   const isLose = customId.startsWith('live_approve_lose_');
 
@@ -82,8 +75,6 @@ module.exports = async (interaction) => {
     }
 
     const { guildId } = match;
-
-    // Điểm cơ bản = 0 nếu không phải Competitive
     const basePoints = match.extractedData.isRanked
       ? (isWin ? POINTS.WIN_BASE : POINTS.LOSE_BASE)
       : 0;
@@ -109,20 +100,60 @@ module.exports = async (interaction) => {
         { upsert: true }
       );
 
-      summaryLines.push(`<@${userId}>: **+${pointsEarned}đ**${isMvp ? ' ⭐ MVP' : ''}`);
+      summaryLines.push({
+        userId,
+        pointsEarned,
+        isMvp
+      });
     }
 
     match.status = 'APPROVED';
     await match.save();
 
-    const modeWarning = !match.extractedData.isRanked
-      ? '\n> ⚠️ Chế độ không xếp hạng, điểm thực chiến = 0. Chỉ cộng số trận.'
-      : '';
-
-    return interaction.update({
-      content: `✅ **Ticket #${ticketId} đã được DUYỆT** (${isWin ? '🏆 THẮNG' : '💀 THUA'})!\n\n${summaryLines.join('\n')}${modeWarning}`,
-      embeds: [],
-      components: []
+    // ── Cập nhật message trong #confirm-result: xoá components, giữ Embed nhỏ ──
+    await interaction.update({
+      content: `✅ **Ticket #${ticketId}** đã được duyệt bởi <@${interaction.user.id}>. Xem kết quả tại **#${BONUS_RESULT_CHANNEL}**.`,
+      embeds: [], components: []
     });
+
+    // ── Post thông báo chi tiết cộng điểm vào #bonus-result ──
+    const bonusChannel = interaction.guild.channels.cache.find(
+      c => c.name === BONUS_RESULT_CHANNEL && c.isTextBased()
+    );
+
+    if (bonusChannel) {
+      const resultEmoji = isWin ? '🏆' : '💀';
+      const resultText  = isWin ? 'VICTORY' : 'DEFEAT';
+
+      const embed = new EmbedBuilder()
+        .setColor(isWin ? '#57f287' : '#ed4245')
+        .setTitle(`${resultEmoji} Kết Quả Trận #${ticketId} – ${resultText}`)
+        .addFields(
+          { name: '🗺️ Map', value: `\`${match.extractedData.map}\``, inline: true },
+          { name: '🎮 Chế độ', value: `\`${match.extractedData.mode}\``, inline: true },
+          { name: '\u200B', value: '\u200B', inline: true }
+        )
+        .setTimestamp();
+
+      // Danh sách điểm từng người
+      const pointsField = summaryLines.map(({ userId, pointsEarned, isMvp }) => {
+        const mvpTag = isMvp ? ' ⭐ **MVP**' : '';
+        return `> <@${userId}>: **+${pointsEarned} điểm**${mvpTag}`;
+      }).join('\n');
+
+      embed.addFields({ name: '🎁 Bảng Cộng Điểm', value: pointsField || '_Không có ai_' });
+
+      if (!match.extractedData.isRanked) {
+        embed.addFields({
+          name: '⚠️ Lưu ý',
+          value: 'Chế độ này không phải Đấu Hạng nên điểm thực chiến = 0. Chỉ cộng số trận.'
+        });
+        embed.setColor('#ffa500');
+      }
+
+      await bonusChannel.send({ embeds: [embed] });
+    } else {
+      console.warn(`[ticketHandler] ⚠️ Không tìm thấy channel #${BONUS_RESULT_CHANNEL}`);
+    }
   }
 };
