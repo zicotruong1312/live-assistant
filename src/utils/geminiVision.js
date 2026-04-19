@@ -43,19 +43,27 @@ async function analyzeValorantScoreboard(imageUrl) {
       }
     };
 
-    const prompt = `Bạn là AI chuyên phân tích màn hình kết quả trận Valorant.
-Hãy đọc các thông tin sau từ bức ảnh và chỉ trả về một JSON object thuần túy (KHÔNG dùng markdown, KHÔNG dùng \`\`\`json):
+    const prompt = `Bạn là một chuyên gia phân tích hình ảnh bảng điểm game Valorant.
+Hãy đọc các thông tin từ bức ảnh này. Lưu ý: Client game có thể đang dùng TIẾNG VIỆT hoặc TIẾNG ANH.
 
-1. "map": Tên map (thường ở góc trên bên trái, dạng "MAP - <Tên Map>"). Chỉ lấy tên, không lấy "MAP -".
-2. "mode": Chế độ chơi (thường nằm ngay dưới tên map, ví dụ: "Standard", "Competitive", "Custom", "Deathmatch"). Giữ nguyên tên tiếng Anh nếu có.
-3. "result": Kết quả trận. Đọc chữ to ở giữa màn hình: VICTORY hoặc DEFEAT. Trả về đúng một trong hai từ này (viết hoa), hoặc "UNKNOWN" nếu không rõ.
-4. "isRanked": Boolean. Trả về true CHỈ khi mode là "Competitive" hoặc các tên tiếng Việt tương đương như "Đấu hạng", "Cạnh tranh", "Xếp hạng". Tất cả chế độ khác (Standard, Custom, Deathmatch, Unrated, v.v.) đều trả về false.
+Các quy tắc trích xuất:
+1. "map": Tên bản đồ. Nếu tiếng Việt ghi "BẢN ĐỒ - TÊN", hãy chỉ lấy "Tên". Các map phổ biến: Ascent, Bind, Haven, Split, Icebox, Breeze, Fracture, Pearl, Lotus, Sunset, Abyss.
+2. "mode": Chế độ chơi. (Ví dụ: Competitive, Đấu Hạng, Unrated, Đấu Thường, Deathmatch, Sinh Tử, Custom, Tùy Chỉnh). Hãy ưu tiên trả về tên TIẾNG ANH chuẩn (ví dụ: Competitive thay vì Đấu hạng).
+3. "result": Kết quả trận đấu. 
+   - Nếu thấy: VICTORY, CHIẾN THẮNG, THẮNG -> Trả về "VICTORY"
+   - Nếu thấy: DEFEAT, THẤT BẠI, THUA -> Trả về "DEFEAT"
+   - Nếu không rõ -> Trả về "UNKNOWN"
+4. "isRanked": Boolean. Trả về true nếu chế độ là Competitive/Đấu Hạng. Các chế độ khác là false.
 
-Định dạng JSON yêu cầu:
-{"map":"<TênMap>","mode":"<ChếĐộChơi>","result":"<VICTORY|DEFEAT|UNKNOWN>","isRanked":<true|false>}`;
+YÊU CẦU QUAN TRỌNG: Chỉ trả về mã JSON thuần túy, không có định dạng markdown.
+
+Định dạng JSON:
+{"map": "tên_map", "mode": "tên_mode", "result": "VICTORY/DEFEAT/UNKNOWN", "isRanked": true/false}`;
 
     const result = await model.generateContent([prompt, imagePart]);
-    const raw = result.response.text().trim();
+    const response = await result.response;
+    const raw = response.text().trim();
+    console.log(`[GeminiVision] Raw AI Response: ${raw}`);
 
     // Loại bỏ markdown nếu AI không tuân thủ
     const cleaned = raw.replace(/```(?:json)?/gi, '').replace(/```/gi, '').trim();

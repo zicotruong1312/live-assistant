@@ -20,8 +20,8 @@ module.exports = async (interaction) => {
   if (!interaction.customId?.startsWith('live_')) return;
 
   const customId = interaction.customId;
-  // ticketId là phần sau prefix: live_xxx_ (split 2 phần đầu)
-  const ticketId = customId.split('_').slice(2).join('_');
+  // Luôn lấy phần cuối cùng làm ticketId để tránh lỗi với các prefix dài (ví dụ: live_approve_win_TCK-123)
+  const ticketId = customId.split('_').pop();
 
   const match = await LiveMatch.findOne({ ticketId });
   if (!match) {
