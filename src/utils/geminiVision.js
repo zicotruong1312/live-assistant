@@ -31,43 +31,53 @@ async function analyzeValorantScoreboard(imageUrl) {
     }
 
     const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
-    const model = genAI.getGenerativeModel({ model: 'gemini-1.5-flash' });
+    const model = genAI.getGenerativeModel({ 
+      model: 'gemini-1.5-flash',
+      generationConfig: { responseMimeType: "application/json" }
+    });
 
-    // Tải ảnh về dạng base64
+    // ... (Tải ảnh base64 giữ nguyên) ...
     const imgResponse = await axios.get(imageUrl, { responseType: 'arraybuffer' });
     const mimeType = imgResponse.headers['content-type'] || 'image/jpeg';
     const imagePart = {
       inlineData: {
-        data: Buffer.from(imgResponse.data).toString('base64'),
-        mimeType
+        data: Buffer.from(imgResponse.data).toString('base64'), mimeType
       }
     };
 
-    const prompt = `Bạn là một chuyên gia phân tích hình ảnh bảng điểm game Valorant.
-Hãy đọc các thông tin từ bức ảnh này. Lưu ý: Client game có thể đang dùng TIẾNG VIỆT hoặc TIẾNG ANH.
+    const prompt = `You are a Valorant scoreboard analyzer. Analyze the provided image and return a JSON object.
+The game client language might be English or Vietnamese.
 
-Các quy tắc trích xuất:
-1. "map": Tên bản đồ. Nếu tiếng Việt ghi "BẢN ĐỒ - TÊN", hãy chỉ lấy "Tên". Các map phổ biến: Ascent, Bind, Haven, Split, Icebox, Breeze, Fracture, Pearl, Lotus, Sunset, Abyss.
-2. "mode": Chế độ chơi. (Ví dụ: Competitive, Đấu Hạng, Unrated, Đấu Thường, Deathmatch, Sinh Tử, Custom, Tùy Chỉnh). Hãy ưu tiên trả về tên TIẾNG ANH chuẩn (ví dụ: Competitive thay vì Đấu hạng).
-3. "result": Kết quả trận đấu. 
-   - Nếu thấy: VICTORY, CHIẾN THẮNG, THẮNG -> Trả về "VICTORY"
-   - Nếu thấy: DEFEAT, THẤT BẠI, THUA -> Trả về "DEFEAT"
-   - Nếu không rõ -> Trả về "UNKNOWN"
-4. "isRanked": Boolean. Trả về true nếu chế độ là Competitive/Đấu Hạng. Các chế độ khác là false.
+Fields to extract:
+1. "map": The map name (e.g., Ascent, Bind, Haven, Split, Icebox, Breeze, Fracture, Pearl, Lotus, Sunset, Abyss). It is usually at the top left after "MAP -" or "BẢN ĐỒ -".
+2. "mode": The game mode (e.g., Competitive, Unrated, Deathmatch, Swiftplay). Usually below the map name. If in Vietnamese (e.g., "Đấu Hạng"), translate to English "Competitive".
+3. "result": The match result. 
+   - If you see "VICTORY", "CHIẾN THẮNG", or "THẮNG" -> "VICTORY"
+   - If you see "DEFEAT", "THẤT BẠI", or "THUA" -> "DEFEAT"
+   - Otherwise -> "UNKNOWN"
+4. "isRanked": Boolean. true if mode is Competitive/Đấu Hạng, false otherwise.
 
-YÊU CẦU QUAN TRỌNG: Chỉ trả về mã JSON thuần túy, không có định dạng markdown.
-
-Định dạng JSON:
-{"map": "tên_map", "mode": "tên_mode", "result": "VICTORY/DEFEAT/UNKNOWN", "isRanked": true/false}`;
+Strict JSON format:
+{"map": "string", "mode": "string", "result": "VICTORY|DEFEAT|UNKNOWN", "isRanked": boolean}`;
 
     const result = await model.generateContent([prompt, imagePart]);
     const response = await result.response;
     const raw = response.text().trim();
     console.log(`[GeminiVision] Raw AI Response: ${raw}`);
 
-    // Loại bỏ markdown nếu AI không tuân thủ
-    const cleaned = raw.replace(/```(?:json)?/gi, '').replace(/```/gi, '').trim();
-    const data = JSON.parse(cleaned);
+    let data;
+    try {
+      data = JSON.parse(raw);
+    } catch (parseErr) {
+      console.error('[GeminiVision] ❌ JSON Parse Error:', parseErr.message);
+      // Fallback: Try regex extraction if JSON mode fails for some reason
+      const jsonMatch = raw.match(/\{[\s\S]*\}/);
+      if (jsonMatch) {
+        data = JSON.parse(jsonMatch[0]);
+      } else {
+        throw new Error('AI returned invalid JSON format');
+      }
+    }
 
     // Double-check isRanked dựa trên danh sách cứng để tránh AI ảo
     const modeLower = (data.mode || '').toLowerCase();
