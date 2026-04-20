@@ -132,7 +132,8 @@ module.exports = async (interaction) => {
           { name: '📊 Tỉ số', value: `\`${match.extractedData.score || 'Unknown'}\``, inline: true },
           { name: '\u200B', value: '\u200B', inline: true }
         )
-        .setTimestamp();
+        .setTimestamp()
+        .setFooter({ text: `Duyệt bởi: ${interaction.user.tag}`, iconURL: interaction.user.displayAvatarURL() });
 
       // Danh sách điểm từng người
       const pointsField = summaryLines.map(({ userId, pointsEarned, isMvp }) => {
