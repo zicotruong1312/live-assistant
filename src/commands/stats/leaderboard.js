@@ -25,36 +25,82 @@ module.exports = {
 
     const timeframe = interaction.options.getString('time');
     const matchDate = getTimeframeMatch(timeframe);
+    const guildId = interaction.guild.id;
 
+    // 1. Lấy dữ liệu chat/voice theo thời gian
     const pipeline = [
-      {
-        $match: {
-          guildId: interaction.guild.id,
-          ...matchDate
-        }
-      },
+      { $match: { guildId, ...matchDate } },
       {
         $group: {
           _id: "$userId",
           totalMessages: { $sum: "$messageCount" },
           totalVoice: { $sum: "$voiceDuration" }
         }
-      },
-      {
-        $addFields: {
-          points: {
-            $add: [
-              "$totalMessages",
-              { $floor: { $divide: ["$totalVoice", 60] } } // 1 min = 1 pt
-            ]
-          }
-        }
-      },
-      { $sort: { points: -1 } },
-      { $limit: 10 }
+      }
     ];
+    const dailyData = await DailyStats.aggregate(pipeline);
 
-    const top10 = await DailyStats.aggregate(pipeline);
+    // 2. Lấy dữ liệu trận đấu (LiveStats) toàn thời gian
+    const UserLiveStats = require('../../models/UserLiveStats');
+    const liveData = await UserLiveStats.find({ guildId });
+
+    // 3. Gộp 2 loại dữ liệu bằng một Map
+    const userMap = new Map();
+
+    // Khởi tạo map từ dailyData
+    for (const d of dailyData) {
+      const msgs = d.totalMessages || 0;
+      const voiceMins = Math.floor((d.totalVoice || 0) / 60);
+      const socialPoints = msgs + voiceMins;
+      
+      userMap.set(d._id, {
+        userId: d._id,
+        messages: msgs,
+        voiceMins,
+        socialPoints,
+        gamePoints: 0,
+        matchesPlayed: 0,
+        matchesWon: 0,
+        matchesLost: 0,
+        mvpCount: 0
+      });
+    }
+
+    // Gộp dữ liệu trận đấu (cộng dồn bất kể timeframe)
+    for (const l of liveData) {
+      const uId = l.userId;
+      if (!userMap.has(uId)) {
+        userMap.set(uId, {
+          userId: uId,
+          messages: 0,
+          voiceMins: 0,
+          socialPoints: 0,
+          gamePoints: 0,
+          matchesPlayed: 0,
+          matchesWon: 0,
+          matchesLost: 0,
+          mvpCount: 0
+        });
+      }
+      const u = userMap.get(uId);
+      u.gamePoints = l.totalPoints || 0;
+      u.matchesPlayed = l.matchesPlayed || 0;
+      u.matchesWon = l.matchesWon || 0;
+      u.matchesLost = l.matchesLost || 0;
+      u.mvpCount = l.mvpCount || 0;
+    }
+
+    // 4. Tính tổng điểm và sắp xếp
+    const allUsers = Array.from(userMap.values());
+    allUsers.forEach(u => {
+      u.totalScore = u.socialPoints + u.gamePoints;
+    });
+
+    // Lọc ra ai có điểm > 0 và sắp xếp
+    const top10 = allUsers
+      .filter(u => u.totalScore > 0 || u.matchesPlayed > 0)
+      .sort((a, b) => b.totalScore - a.totalScore)
+      .slice(0, 10);
 
     let timeLabel = '';
     if (timeframe === 'today') timeLabel = 'Hôm nay';
@@ -71,18 +117,20 @@ module.exports = {
 
     const rows = top10.map((entry, i) => {
       const medal = medals[i] ?? `**${i + 1}.**`;
-      const pts = entry.points;
-      const msgs = entry.totalMessages;
-      const vSecs = entry.totalVoice;
-
-      return `${medal} <@${entry._id}> — **${pts} Điểm**\n└ 💬 ${msgs} tin | 🎙️ ${Math.floor(vSecs/60)} phút`;
+      
+      const parts = [`💬 ${entry.messages} tin`, `🎙️ ${entry.voiceMins} phút`];
+      if (entry.matchesPlayed > 0) {
+        parts.push(`🎮 ${entry.matchesPlayed} trận (${entry.matchesWon}W - ${entry.matchesLost}L)`);
+      }
+      
+      return `${medal} <@${entry.userId}> — **${entry.totalScore} Điểm**\n└ ${parts.join(' | ')}`;
     });
 
     const embed = new EmbedBuilder()
       .setColor(0xfee75c)
       .setTitle(`🏆 BẢNG XẾP HẠNG ĐIỂM SỐ — ${timeLabel}`)
       .setDescription(rows.join('\n\n'))
-      .setFooter({ text: '1 tin nhắn = 1đ | 1 phút voice = 1đ' })
+      .setFooter({ text: '1 tin = 1đ | 1 phút voice = 1đ | Điểm game (vĩnh viễn)' })
       .setTimestamp();
 
     await interaction.editReply({ embeds: [embed] });
