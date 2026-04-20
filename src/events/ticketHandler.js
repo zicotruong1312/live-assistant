@@ -131,6 +131,7 @@ module.exports = async (interaction) => {
         .addFields(
           { name: '🗺️ Map', value: `\`${match.extractedData.map}\``, inline: true },
           { name: '🎮 Chế độ', value: `\`${match.extractedData.mode}\``, inline: true },
+          { name: '📊 Tỉ số', value: `\`${match.extractedData.score || 'Unknown'}\``, inline: true },
           { name: '\u200B', value: '\u200B', inline: true }
         )
         .setTimestamp();

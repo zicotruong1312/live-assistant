@@ -29,7 +29,9 @@ function buildTicketMessage(match) {
     .addFields(
       { name: '🗺️ Map (AI)', value: `\`${extractedData.map}\``, inline: true },
       { name: '🎮 Chế Độ', value: `\`${extractedData.mode}\``, inline: true },
+      { name: '📊 Tỉ Số (AI)', value: `\`${extractedData.score || 'Unknown'}\``, inline: true },
       { name: '🏆 Kết Quả (AI)', value: `\`${extractedData.result}\``, inline: true },
+      { name: '✅ Thắng/Thua', value: `\`${extractedData.winLose || 'UNKNOWN'}\``, inline: true },
       {
         name: '👥 Người Chơi Hiện Tại',
         value: selectedPlayers.length > 0

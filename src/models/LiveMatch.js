@@ -10,7 +10,9 @@ const liveMatchSchema = new mongoose.Schema({
   extractedData: {
     map:      { type: String, default: 'Unknown' },
     mode:     { type: String, default: 'Unknown' },
+    score:    { type: String, default: 'Unknown' }, // VD: "9-13"
     result:   { type: String, default: 'Unknown' }, // VICTORY / DEFEAT / UNKNOWN
+    winLose:  { type: String, default: 'UNKNOWN' }, // THẮNG / THUA / UNKNOWN
     isRanked: { type: Boolean, default: false }       // true chỉ khi là Competitive/Đấu hạng
   },
 
