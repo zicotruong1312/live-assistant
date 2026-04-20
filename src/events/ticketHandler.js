@@ -30,8 +30,7 @@ module.exports = async (interaction) => {
 
   // ─── 1. Menu chọn danh sách người chơi ───
   if (customId.startsWith('live_players_')) {
-    match.selectedPlayers = interaction.values;
-    await match.save();
+    await LiveMatch.updateOne({ ticketId }, { $set: { selectedPlayers: interaction.values } });
 
     const msg = match.selectedPlayers.length === 0
       ? '✅ Đã xoá toàn bộ người chơi. Ticket này sẽ không cộng điểm cho ai khi Approve.'
@@ -42,8 +41,7 @@ module.exports = async (interaction) => {
 
   // ─── 2. Menu chọn MVP ───
   if (customId.startsWith('live_mvp_')) {
-    match.mvpId = interaction.values[0];
-    await match.save();
+    await LiveMatch.updateOne({ ticketId }, { $set: { mvpId: interaction.values[0] } });
     return interaction.reply({ content: `✅ Đã chốt <@${match.mvpId}> là MVP của trận này.`, ephemeral: true });
   }
 
@@ -54,8 +52,7 @@ module.exports = async (interaction) => {
 
   // ─── 3. Nút Từ chối (Decline) ───
   if (customId.startsWith('live_decline_')) {
-    match.status = 'DECLINED';
-    await match.save();
+    await LiveMatch.updateOne({ ticketId }, { $set: { status: 'DECLINED' } });
     return interaction.update({
       content: `❌ Ticket **#${ticketId}** đã bị **TỪ CHỐI**. Không ai được cộng điểm.`,
       embeds: [], components: []
@@ -105,8 +102,7 @@ module.exports = async (interaction) => {
       });
     }
 
-    match.status = 'APPROVED';
-    await match.save();
+    await LiveMatch.updateOne({ ticketId }, { $set: { status: 'APPROVED' } });
 
     // ── Cập nhật message trong #confirm-result: xoá components, giữ Embed nhỏ ──
     await interaction.update({
