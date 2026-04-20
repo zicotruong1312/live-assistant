@@ -135,8 +135,8 @@ Fields to extract:
    - If you see "DEFEAT", "THẤT BẠI", or "THUA" -> "DEFEAT"
    - Otherwise -> "UNKNOWN"
 4. "score": The final rounds score as "team1-team2" (example: "9-13"). It is typically displayed near the result text at the top center.
-5. "mvp": The exact in-game name of the Match MVP (the player with the highest combat score across BOTH teams, usually the absolute top player in the winning team). Return exact in-game name.
-6. "teamMvp": The exact in-game name of the Team MVP for your team (or the team you are observing). If your team won, this is slightly redundant with mvp. If your team lost, look at the top player in the bottom table (the losing team). Return exact in-game name.
+5. "mvp": The exact in-game name of the overall Match MVP. Look at the "Điểm Giao Tranh" (Combat Score) for everyone. The Match MVP is the single player with the highest combat score in the ENTIRE image across both teams.
+6. "teamMvp": The exact in-game name of the Team MVP. Look ONLY at the players with the TEAL/GREEN background (Your team). The scoreboard is already sorted by score, so the Team MVP is simply the VERY FIRST player at the top of the TEAL/GREEN rows.
 7. "isRanked": Boolean. true if mode is Competitive/Đấu Hạng (excluding the word "DANH VỌNG" if it's just a nav tab), false otherwise.
 
 Strict JSON format:
@@ -235,8 +235,8 @@ Rules:
 - "mode": Read the text IMMEDIATELY above the map name (e.g. Competitive, Đấu Hạng, Đấu Thường). Exclude words like 'DANH VỌNG' if they are clearly navigation tabs far away from the map name.
 - "result": VICTORY or DEFEAT based on the center text.
 - "score": Look at the numbers directly left and right of the result text (e.g. 13-9).
-- "mvp": The exact in-game name of the overall Match MVP (highest point player across both teams).
-- "teamMvp": The exact in-game name of the Team MVP (highest point player on YOUR team, specifically if your team lost, look at the top of the bottom table).
+- "mvp": The absolute highest combat score player in the entire match.
+- "teamMvp": The first player listed at the top of the TEAL/GREEN background section.
 - "isRanked": true if mode contains Competitive or Đấu Hạng.
 
 Return STRICT JSON only:

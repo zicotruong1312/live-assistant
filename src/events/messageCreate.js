@@ -55,25 +55,33 @@ module.exports = {
         );
       }
 
-      // Gọi Gemini AI phân tích ảnh
-      const extractedData = await analyzeValorantScoreboard(attachment.url);
-
       // Tạo Ticket ID duy nhất
       const ticketId = `TCK-${Date.now().toString().slice(-5)}`;
 
-      // Lưu vào DB
-      const newMatch = await new LiveMatch({
+      // Lưu vào DB trước bằng dữ liệu thô (để khóa messageId, tránh race condition trên 2 instance)
+      const newMatch = new LiveMatch({
         ticketId,
         channelId:       message.channel.id,
         messageId:       message.id,
         guildId:         message.guild.id,
         imageUrl:        attachment.url,
-        extractedData,
         voiceSnapshot,
         selectedPlayers: voiceSnapshot
-      }).save();
+      });
+      await newMatch.save();
 
-      // Chỉ thả reaction để báo hiệu đã nhận ảnh thành công (giữ kênh live-result sạch sẽ)
+      // Chỉ reaction khi đã ghi đè DB thành công (nghĩa là instance này được quyền xử lý)
+      await message.react('👀');
+
+      // Sau khi lấy được quyền xử lý, gọi Gemini AI phân tích ảnh
+      const extractedData = await analyzeValorantScoreboard(attachment.url);
+
+      // Cập nhật lại data thật từ AI
+      newMatch.extractedData = extractedData;
+      await newMatch.save();
+
+      // Reaction báo hiệu hoàn tất AI
+      await message.reactions.removeAll().catch(() => {});
       await message.react('✅');
 
       // Auto-post Ticket sang #confirm-result để sếp duyệt
