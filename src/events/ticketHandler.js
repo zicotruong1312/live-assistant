@@ -75,15 +75,13 @@ module.exports = async (interaction) => {
     }
 
     const { guildId } = match;
-    const basePoints = match.extractedData.isRanked
-      ? (isWin ? POINTS.WIN_BASE : POINTS.LOSE_BASE)
-      : 0;
+    const basePoints = isWin ? POINTS.WIN_BASE : POINTS.LOSE_BASE;
 
     const summaryLines = [];
 
     for (const userId of match.selectedPlayers) {
       const isMvp = (userId === match.mvpId);
-      const mvpBonus = (isMvp && isWin && match.extractedData.isRanked) ? POINTS.MVP_BONUS : 0;
+      const mvpBonus = (isMvp && isWin) ? POINTS.MVP_BONUS : 0;
       const pointsEarned = basePoints + mvpBonus;
 
       await UserLiveStats.findOneAndUpdate(
@@ -144,13 +142,7 @@ module.exports = async (interaction) => {
 
       embed.addFields({ name: '🎁 Bảng Cộng Điểm', value: pointsField || '_Không có ai_' });
 
-      if (!match.extractedData.isRanked) {
-        embed.addFields({
-          name: '⚠️ Lưu ý',
-          value: 'Chế độ này không phải Đấu Hạng nên điểm thực chiến = 0. Chỉ cộng số trận.'
-        });
-        embed.setColor('#ffa500');
-      }
+
 
       await bonusChannel.send({ embeds: [embed] });
     } else {

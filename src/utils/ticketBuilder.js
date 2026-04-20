@@ -46,12 +46,7 @@ function buildTicketMessage(match) {
     .setImage(imageUrl)
     .setFooter({ text: '① Chọn người chơi → ② Bầu MVP → ③ Bấm Duyệt' });
 
-  if (!extractedData.isRanked) {
-    embed.addFields({
-      name: '⚠️ CẢNH BÁO CHẾ ĐỘ CHƠI',
-      value: '**AI phát hiện đây KHÔNG PHẢI Đấu Hạng (Competitive). Mọi điểm sẽ = 0 nếu Approve. Xem xét Decline!**'
-    });
-  }
+
 
   const playerMenu = new UserSelectMenuBuilder()
     .setCustomId(`live_players_${ticketId}`)
