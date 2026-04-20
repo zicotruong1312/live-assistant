@@ -110,7 +110,7 @@ async function analyzeValorantScoreboard(imageUrl) {
     const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
     // Đổi sang 'gemini-1.5-flash-latest' để tránh lỗi 404 trên endpoint v1beta
     const model = genAI.getGenerativeModel({ 
-      model: 'gemini-1.5-flash-latest',
+      model: 'gemini-1.5-pro',
       generationConfig: { responseMimeType: "application/json" }
     });
 
@@ -123,21 +123,22 @@ async function analyzeValorantScoreboard(imageUrl) {
       }
     };
 
-    const basePrompt = `You are a Valorant scoreboard analyzer. Analyze the provided image and return a JSON object.
+    const basePrompt = `You are a Valorant scoreboard OCR specialist. Analyze the provided image and return a structured JSON object.
 The game client language might be English or Vietnamese.
 
 Fields to extract:
 1. "map": The map name (e.g., Ascent, Bind, Haven, Split, Icebox, Breeze, Fracture, Pearl, Lotus, Sunset, Abyss). It is usually at the top left after "MAP -" or "BẢN ĐỒ -".
-2. "mode": The game mode (e.g., Competitive, Unrated, Deathmatch, Swiftplay). Usually below the map name. If in Vietnamese (e.g., "Đấu Hạng"), translate to English "Competitive".
-3. "result": The match result.
+2. "mode": The game mode (e.g., Competitive, Unrated, Deathmatch, Swiftplay). Usually below the map name. Use the exact text you see, e.g., "Đấu Hạng", "Danh Vọng", "Competitive".
+3. "result": The match result. Look at the TOP-CENTER of the image.
    - If you see "VICTORY", "CHIẾN THẮNG", or "THẮNG" -> "VICTORY"
    - If you see "DEFEAT", "THẤT BẠI", or "THUA" -> "DEFEAT"
    - Otherwise -> "UNKNOWN"
-4. "score": The final rounds score as "yourTeam-opponent" (example: "9-13"). It is typically displayed near the result text.
-5. "isRanked": Boolean. true if mode is Competitive/Đấu Hạng/Danh Vọng, false otherwise.
+4. "score": The final rounds score as "team1-team2" (example: "9-13"). It is typically displayed near the result text at the top center.
+5. "mvp": The in-game name of the MVP. Look at the scoreboard table. The MVP is the player at the very top of the list for the winning team, or the player with a star icon/highest combat score. Return their exact in-game name.
+6. "isRanked": Boolean. true if mode is Competitive/Đấu Hạng/Danh Vọng, false otherwise.
 
 Strict JSON format:
-{"map": "string", "mode": "string", "result": "VICTORY|DEFEAT|UNKNOWN", "score": "string", "isRanked": boolean}`;
+{"map": "string", "mode": "string", "result": "VICTORY|DEFEAT|UNKNOWN", "score": "string", "mvp": "string", "isRanked": boolean}`;
 
     async function runPrompt(promptText, label) {
       const result = await model.generateContent([promptText, imagePart]);
@@ -162,6 +163,7 @@ Strict JSON format:
       out.mode = normalizeMode(out.mode);
       out.result = normalizeResult(out.result);
       out.score = normalizeScore(out.score);
+      out.mvp = String(out.mvp || 'Unknown').trim();
       out.winLose = out.result === 'VICTORY' ? 'THẮNG' : out.result === 'DEFEAT' ? 'THUA' : 'UNKNOWN';
 
       // Coerce isRanked to boolean if model returns string/number
@@ -184,7 +186,15 @@ Strict JSON format:
       const modeUnknown = !d?.mode || String(d.mode).toLowerCase() === 'unknown';
       const resUnknown = !d?.result || String(d.result).toUpperCase() === 'UNKNOWN';
       const scoreUnknown = !d?.score || String(d.score).toLowerCase() === 'unknown';
-      return mapUnknown && modeUnknown && resUnknown && scoreUnknown;
+      const mvpUnknown = !d?.mvp || String(d.mvp).toLowerCase() === 'unknown';
+      // If 3 out of 5 are unknown, consider it mostly unknown
+      let scoreParams = 0;
+      if (mapUnknown) scoreParams++;
+      if (modeUnknown) scoreParams++;
+      if (resUnknown) scoreParams++;
+      if (scoreUnknown) scoreParams++;
+      if (mvpUnknown) scoreParams++;
+      return scoreParams >= 3;
     }
 
     let data = postNormalize(await runPrompt(basePrompt, 'base'));
@@ -192,35 +202,39 @@ Strict JSON format:
     // Double-check isRanked dựa trên danh sách cứng để tránh AI ảo
     if (isMostlyUnknown(data)) {
       const hardPrompt = `You are a Valorant scoreboard OCR specialist.
-Focus ONLY on the top-left and the top-center of the image.
+Focus deeply on text extraction.
 
-Top-left usually contains the game mode and map line:
-- Vietnamese examples: "DANH VỌNG", "ĐẤU HẠNG", "BẢN ĐỒ - SPLIT"
-- English examples: "COMPETITIVE", "MAP - SPLIT"
+Top-left usually contains the game mode and map:
+- Vietnamese: "DANH VỌNG", "ĐẤU HẠNG", "BẢN ĐỒ - SPLIT"
+- English: "COMPETITIVE", "MAP - SPLIT"
 
 Top-center usually contains result and score:
 - Vietnamese: "<number> THẤT BẠI <number>" or "<number> CHIẾN THẮNG <number>"
 - English: "<number> DEFEAT <number>" or "<number> VICTORY <number>"
 
+Scoreboard body:
+- The top players of each team. The player with the star is the MVP. Also look at the first row under "ĐỘI BẠN" or your team depending on who won.
+
 Rules:
-- "map" MUST be one of: ${KNOWN_MAPS.join(', ')} (best match).
-- "mode": return "Competitive" if you see "DANH VỌNG" or any ranked/competitive word; otherwise return the mode text if visible; else "Unknown".
-- "result": return VICTORY/DEFEAT based on the center word; else UNKNOWN.
-- "score": return "X-Y" using the two numbers around the result word; else "Unknown".
-- "isRanked": true if mode is Competitive (including Vietnamese "DANH VỌNG"/"ĐẤU HẠNG"), otherwise false.
+- "map": MUST be one of ${KNOWN_MAPS.join(', ')}. Look for it in the top left corner.
+- "mode": Read the text above the map in the top left corner (e.g. Competitive, Đấu Hạng).
+- "result": VICTORY or DEFEAT based on the center text.
+- "score": Look at the numbers directly left and right of the result text (e.g. 13-9).
+- "mvp": The exact in-game name of the MVP from the scoreboard list (usually the top player of the top team).
+- "isRanked": true if mode contains Competitive/Danh Vọng/Đấu Hạng.
 
 Return STRICT JSON only:
-{"map":"string","mode":"string","result":"VICTORY|DEFEAT|UNKNOWN","score":"string","isRanked":boolean}`;
+{"map":"string","mode":"string","result":"VICTORY|DEFEAT|UNKNOWN","score":"string","mvp":"string","isRanked":boolean}`;
 
       data = postNormalize(await runPrompt(hardPrompt, 'retry'));
     }
 
-    console.log(`[GeminiVision] ✅ Phân tích xong: Map=${data.map}, Mode=${data.mode}, Result=${data.result}, Score=${data.score}, isRanked=${data.isRanked}`);
+    console.log(`[GeminiVision] ✅ Phân tích xong: Map=${data.map}, Mode=${data.mode}, Result=${data.result}, Score=${data.score}, MVP=${data.mvp}, isRanked=${data.isRanked}`);
     return data;
 
   } catch (err) {
     console.error('[GeminiVision] ❌ Lỗi khi phân tích ảnh:', err.message);
-    return { map: 'Error', mode: 'Error', result: 'UNKNOWN', winLose: 'UNKNOWN', score: 'Unknown', isRanked: false };
+    return { map: 'Error', mode: 'Error', result: 'UNKNOWN', winLose: 'UNKNOWN', score: 'Unknown', mvp: 'Unknown', isRanked: false };
   }
 }
 

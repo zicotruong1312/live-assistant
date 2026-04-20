@@ -32,6 +32,7 @@ function buildTicketMessage(match) {
       { name: '📊 Tỉ Số (AI)', value: `\`${extractedData.score || 'Unknown'}\``, inline: true },
       { name: '🏆 Kết Quả (AI)', value: `\`${extractedData.result}\``, inline: true },
       { name: '✅ Thắng/Thua', value: `\`${extractedData.winLose || 'UNKNOWN'}\``, inline: true },
+      { name: '🌟 Ingame MVP (AI)', value: `\`${extractedData.mvp || 'Unknown'}\``, inline: true },
       {
         name: '👥 Người Chơi Hiện Tại',
         value: selectedPlayers.length > 0
