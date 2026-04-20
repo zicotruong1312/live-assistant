@@ -136,7 +136,7 @@ Fields to extract:
    - Otherwise -> "UNKNOWN"
 4. "score": The final rounds score as "team1-team2" (example: "9-13"). It is typically displayed near the result text at the top center.
 5. "mvp": The exact in-game name of the overall Match MVP. Look at the "Điểm Giao Tranh" (Combat Score) for everyone. The Match MVP is the single player with the highest combat score in the ENTIRE image across both teams.
-6. "teamMvp": The exact in-game name of the Team MVP. Look ONLY at the players with the TEAL/GREEN background (Your team). The scoreboard is already sorted by score, so the Team MVP is simply the VERY FIRST player at the top of the TEAL/GREEN rows.
+6. "teamMvp": The exact in-game name of the Team MVP. Look ONLY at "Your Team", which means players with a TEAL/GREEN background AND the single player with the GOLD/BRONZE background (which is 'You'). Look at both these colors and find the player with the highest combat score among them. Return exact in-game name.
 7. "isRanked": Boolean. true if mode is Competitive/Đấu Hạng (excluding the word "DANH VỌNG" if it's just a nav tab), false otherwise.
 
 Strict JSON format:
@@ -236,7 +236,7 @@ Rules:
 - "result": VICTORY or DEFEAT based on the center text.
 - "score": Look at the numbers directly left and right of the result text (e.g. 13-9).
 - "mvp": The absolute highest combat score player in the entire match.
-- "teamMvp": The first player listed at the top of the TEAL/GREEN background section.
+- "teamMvp": The player with the highest combat score among those with a TEAL/GREEN or GOLD/BRONZE background (Your Team).
 - "isRanked": true if mode contains Competitive or Đấu Hạng.
 
 Return STRICT JSON only:
