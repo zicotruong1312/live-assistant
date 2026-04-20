@@ -135,11 +135,12 @@ Fields to extract:
    - If you see "DEFEAT", "THẤT BẠI", or "THUA" -> "DEFEAT"
    - Otherwise -> "UNKNOWN"
 4. "score": The final rounds score as "team1-team2" (example: "9-13"). It is typically displayed near the result text at the top center.
-5. "mvp": The in-game name of the MVP. Look at the scoreboard table. The MVP is the player at the very top of the list for the winning team, or the player with a star icon/highest combat score. Return their exact in-game name.
-6. "isRanked": Boolean. true if mode is Competitive/Đấu Hạng (excluding the word "DANH VỌNG" if it's just a nav tab), false otherwise.
+5. "mvp": The exact in-game name of the Match MVP (the player with the highest combat score across BOTH teams, usually the absolute top player in the winning team). Return exact in-game name.
+6. "teamMvp": The exact in-game name of the Team MVP for your team (or the team you are observing). If your team won, this is slightly redundant with mvp. If your team lost, look at the top player in the bottom table (the losing team). Return exact in-game name.
+7. "isRanked": Boolean. true if mode is Competitive/Đấu Hạng (excluding the word "DANH VỌNG" if it's just a nav tab), false otherwise.
 
 Strict JSON format:
-{"map": "string", "mode": "string", "result": "VICTORY|DEFEAT|UNKNOWN", "score": "string", "mvp": "string", "isRanked": boolean}`;
+{"map": "string", "mode": "string", "result": "VICTORY|DEFEAT|UNKNOWN", "score": "string", "mvp": "string", "teamMvp": "string", "isRanked": boolean}`;
 
     async function runPrompt(promptText, label) {
       const result = await model.generateContent([promptText, imagePart]);
@@ -165,6 +166,7 @@ Strict JSON format:
       out.result = normalizeResult(out.result);
       out.score = normalizeScore(out.score);
       out.mvp = String(out.mvp || 'Unknown').trim();
+      out.teamMvp = String(out.teamMvp || 'Unknown').trim();
       out.winLose = out.result === 'VICTORY' ? 'THẮNG' : out.result === 'DEFEAT' ? 'THUA' : 'UNKNOWN';
 
       // Coerce isRanked to boolean if model returns string/number
@@ -222,21 +224,22 @@ Rules:
 - "mode": Read the text IMMEDIATELY above the map name (e.g. Competitive, Đấu Hạng, Đấu Thường). Exclude words like 'DANH VỌNG' if they are clearly navigation tabs far away from the map name.
 - "result": VICTORY or DEFEAT based on the center text.
 - "score": Look at the numbers directly left and right of the result text (e.g. 13-9).
-- "mvp": The exact in-game name of the MVP from the scoreboard list (usually the top player of the top team).
+- "mvp": The exact in-game name of the overall Match MVP (highest point player across both teams).
+- "teamMvp": The exact in-game name of the Team MVP (highest point player on YOUR team, specifically if your team lost, look at the top of the bottom table).
 - "isRanked": true if mode contains Competitive or Đấu Hạng.
 
 Return STRICT JSON only:
-{"map":"string","mode":"string","result":"VICTORY|DEFEAT|UNKNOWN","score":"string","mvp":"string","isRanked":boolean}`;
+{"map":"string","mode":"string","result":"VICTORY|DEFEAT|UNKNOWN","score":"string","mvp":"string","teamMvp":"string","isRanked":boolean}`;
 
       data = postNormalize(await runPrompt(hardPrompt, 'retry'));
     }
 
-    console.log(`[GeminiVision] ✅ Phân tích xong: Map=${data.map}, Mode=${data.mode}, Result=${data.result}, Score=${data.score}, MVP=${data.mvp}, isRanked=${data.isRanked}`);
+    console.log(`[GeminiVision] ✅ Phân tích xong: Map=${data.map}, Mode=${data.mode}, Result=${data.result}, Score=${data.score}, MatchMVP=${data.mvp}, TeamMVP=${data.teamMvp}, isRanked=${data.isRanked}`);
     return data;
 
   } catch (err) {
     console.error('[GeminiVision] ❌ Lỗi khi phân tích ảnh:', err.message);
-    return { map: 'Error', mode: 'Error', result: 'UNKNOWN', winLose: 'UNKNOWN', score: 'Unknown', mvp: 'Unknown', isRanked: false };
+    return { map: 'Error', mode: 'Error', result: 'UNKNOWN', winLose: 'UNKNOWN', score: 'Unknown', mvp: 'Unknown', teamMvp: 'Unknown', isRanked: false };
   }
 }
 

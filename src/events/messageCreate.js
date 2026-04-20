@@ -48,6 +48,11 @@ module.exports = {
         voiceSnapshot = message.member.voice.channel.members
           .filter(m => !m.user.bot)
           .map(m => m.id);
+      } else {
+        // Dự phòng: Nếu người post ảnh không ở trong voice, lấy tất cả mọi người đang online trong các phòng voice
+        voiceSnapshot = Array.from(
+            message.guild.voiceStates.cache.filter(vs => vs.channelId && vs.member && !vs.member.user.bot).keys()
+        );
       }
 
       // Gọi Gemini AI phân tích ảnh

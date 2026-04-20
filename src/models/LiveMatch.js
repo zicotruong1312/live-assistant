@@ -14,7 +14,8 @@ const liveMatchSchema = new mongoose.Schema({
     score:    { type: String, default: 'Unknown' }, // VD: "9-13"
     result:   { type: String, default: 'Unknown' }, // VICTORY / DEFEAT / UNKNOWN
     winLose:  { type: String, default: 'UNKNOWN' }, // THẮNG / THUA / UNKNOWN
-    mvp:      { type: String, default: 'Unknown' }, // Tên ingame của người chơi cao điểm hoặc MVP
+    mvp:      { type: String, default: 'Unknown' }, // Match MVP
+    teamMvp:  { type: String, default: 'Unknown' }, // Team MVP
     isRanked: { type: Boolean, default: false }       // true chỉ khi là Competitive/Đấu hạng
   },
 
