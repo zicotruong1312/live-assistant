@@ -142,19 +142,30 @@ Fields to extract:
 Strict JSON format:
 {"map": "string", "mode": "string", "result": "VICTORY|DEFEAT|UNKNOWN", "score": "string", "mvp": "string", "teamMvp": "string", "isRanked": boolean}`;
 
-    async function runPrompt(promptText, label) {
-      const result = await model.generateContent([promptText, imagePart]);
-      const response = await result.response;
-      const raw = response.text().trim();
-      console.log(`[GeminiVision] Raw AI Response (${label}): ${raw}`);
+    async function runPrompt(promptText, label, maxRetries = 3) {
+      for (let i = 0; i < maxRetries; i++) {
+        try {
+          const result = await model.generateContent([promptText, imagePart]);
+          const response = await result.response;
+          const raw = response.text().trim();
+          console.log(`[GeminiVision] Raw AI Response (${label}, retry ${i}): ${raw}`);
 
-      try {
-        return JSON.parse(raw);
-      } catch (parseErr) {
-        console.error(`[GeminiVision] ❌ JSON Parse Error (${label}):`, parseErr.message);
-        const jsonMatch = raw.match(/\{[\s\S]*\}/);
-        if (jsonMatch) return JSON.parse(jsonMatch[0]);
-        throw new Error('AI returned invalid JSON format');
+          try {
+            return JSON.parse(raw);
+          } catch (parseErr) {
+            console.error(`[GeminiVision] ❌ JSON Parse Error (${label}):`, parseErr.message);
+            const jsonMatch = raw.match(/\{[\s\S]*\}/);
+            if (jsonMatch) return JSON.parse(jsonMatch[0]);
+            throw new Error('AI returned invalid JSON format');
+          }
+        } catch (e) {
+          console.error(`[GeminiVision] ⚠️ API Error (attempt ${i + 1}/${maxRetries}): ${e.message}`);
+          if (i < maxRetries - 1 && (e.status === 503 || e.status === 429 || e.message.includes('503') || e.message.includes('429'))) {
+            await new Promise(res => setTimeout(res, 2000));
+            continue;
+          }
+          throw e; // Give up
+        }
       }
     }
 
@@ -239,7 +250,8 @@ Return STRICT JSON only:
 
   } catch (err) {
     console.error('[GeminiVision] ❌ Lỗi khi phân tích ảnh:', err.message);
-    return { map: 'Error', mode: 'Error', result: 'UNKNOWN', winLose: 'UNKNOWN', score: 'Unknown', mvp: 'Unknown', teamMvp: 'Unknown', isRanked: false };
+    const shortErr = err.message.substring(0, 30);
+    return { map: `Error: ${shortErr}`, mode: 'Error', result: 'UNKNOWN', winLose: 'UNKNOWN', score: 'Unknown', mvp: 'Unknown', teamMvp: 'Unknown', isRanked: false };
   }
 }
 
