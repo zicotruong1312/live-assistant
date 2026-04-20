@@ -12,7 +12,8 @@ const KNOWN_MAPS = [
   'Pearl',
   'Lotus',
   'Sunset',
-  'Abyss'
+  'Abyss',
+  'Corrode'
 ];
 
 // Danh sách chế độ KHÔNG được tính điểm (cả tên Tiếng Anh và Tiếng Việt)
@@ -109,7 +110,7 @@ async function analyzeValorantScoreboard(imageUrl) {
 
     const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
     // Đổi sang 'gemini-1.5-flash-latest' để tránh lỗi 404 trên endpoint v1beta
-    const model = genAI.getGenerativeModel({ 
+    const model = genAI.getGenerativeModel({
       model: 'gemini-2.5-flash',
       generationConfig: { responseMimeType: "application/json" }
     });
@@ -128,14 +129,14 @@ The game client language might be English or Vietnamese.
 
 Fields to extract:
 1. "map": The map name (e.g., Ascent, Bind, Haven, Split, Icebox, Breeze, Fracture, Pearl, Lotus, Sunset, Abyss). It is usually at the top left after "MAP -" or "BẢN ĐỒ -".
-2. "mode": The game mode (e.g., Competitive, Unrated, Deathmatch, Swiftplay). Usually below the map name. Use the exact text you see, e.g., "Đấu Hạng", "Danh Vọng", "Competitive".
+2. "mode": The game mode explicitly written IMMEDIATELY ABOVE the map name (e.g. above "BẢN ĐỒ - SPLIT"). Examples: "Đấu Hạng", "Đấu Thường", "Competitive", "Unrated", "Custom Game". DO NOT pick up navigation tab names like "DANH VỌNG" or "CHƠI" at the very top edge of the screen. Return the exact game mode text you see above the map.
 3. "result": The match result. Look at the TOP-CENTER of the image.
    - If you see "VICTORY", "CHIẾN THẮNG", or "THẮNG" -> "VICTORY"
    - If you see "DEFEAT", "THẤT BẠI", or "THUA" -> "DEFEAT"
    - Otherwise -> "UNKNOWN"
 4. "score": The final rounds score as "team1-team2" (example: "9-13"). It is typically displayed near the result text at the top center.
 5. "mvp": The in-game name of the MVP. Look at the scoreboard table. The MVP is the player at the very top of the list for the winning team, or the player with a star icon/highest combat score. Return their exact in-game name.
-6. "isRanked": Boolean. true if mode is Competitive/Đấu Hạng/Danh Vọng, false otherwise.
+6. "isRanked": Boolean. true if mode is Competitive/Đấu Hạng (excluding the word "DANH VỌNG" if it's just a nav tab), false otherwise.
 
 Strict JSON format:
 {"map": "string", "mode": "string", "result": "VICTORY|DEFEAT|UNKNOWN", "score": "string", "mvp": "string", "isRanked": boolean}`;
@@ -205,8 +206,9 @@ Strict JSON format:
 Focus deeply on text extraction.
 
 Top-left usually contains the game mode and map:
-- Vietnamese: "DANH VỌNG", "ĐẤU HẠNG", "BẢN ĐỒ - SPLIT"
-- English: "COMPETITIVE", "MAP - SPLIT"
+- Vietnamese: "ĐẤU HẠNG", "ĐẤU THƯỜNG", "BẢN ĐỒ - SPLIT"
+- English: "COMPETITIVE", "UNRATED", "MAP - SPLIT"
+Note: Do not read navigation tabs like "DANH VỌNG" from the upper border edge. Look exactly above the date and map name for the mode.
 
 Top-center usually contains result and score:
 - Vietnamese: "<number> THẤT BẠI <number>" or "<number> CHIẾN THẮNG <number>"
@@ -217,11 +219,11 @@ Scoreboard body:
 
 Rules:
 - "map": MUST be one of ${KNOWN_MAPS.join(', ')}. Look for it in the top left corner.
-- "mode": Read the text above the map in the top left corner (e.g. Competitive, Đấu Hạng).
+- "mode": Read the text IMMEDIATELY above the map name (e.g. Competitive, Đấu Hạng, Đấu Thường). Exclude words like 'DANH VỌNG' if they are clearly navigation tabs far away from the map name.
 - "result": VICTORY or DEFEAT based on the center text.
 - "score": Look at the numbers directly left and right of the result text (e.g. 13-9).
 - "mvp": The exact in-game name of the MVP from the scoreboard list (usually the top player of the top team).
-- "isRanked": true if mode contains Competitive/Danh Vọng/Đấu Hạng.
+- "isRanked": true if mode contains Competitive or Đấu Hạng.
 
 Return STRICT JSON only:
 {"map":"string","mode":"string","result":"VICTORY|DEFEAT|UNKNOWN","score":"string","mvp":"string","isRanked":boolean}`;
