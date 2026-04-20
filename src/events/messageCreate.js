@@ -37,6 +37,11 @@ module.exports = {
     if (!attachment.contentType || !attachment.contentType.startsWith('image/')) return;
 
     try {
+      // Anti-duplicate: nếu message này đã được xử lý rồi thì bỏ qua.
+      // (Giúp tránh spam ticket khi có nhiều instance bot chạy song song)
+      const existing = await LiveMatch.findOne({ messageId: message.id });
+      if (existing) return;
+
       // Snapshot người đang ngồi Voice lúc quăng ảnh
       let voiceSnapshot = [];
       if (message.member?.voice?.channel) {
@@ -70,6 +75,11 @@ module.exports = {
       await postTicketToConfirmChannel(message.guild, newMatch);
 
     } catch (err) {
+      // Nếu trùng messageId do nhiều instance race-condition → coi như đã xử lý, không cần tạo thêm
+      if (err?.code === 11000) {
+        await message.react('✅').catch(() => {});
+        return;
+      }
       console.error('[messageCreate] Lỗi tạo Ticket:', err);
       // Thả reaction lỗi nếu có vấn đề
       await message.react('❌').catch(() => {});

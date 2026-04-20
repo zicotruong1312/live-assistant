@@ -3,7 +3,8 @@ const mongoose = require('mongoose');
 const liveMatchSchema = new mongoose.Schema({
   ticketId:   { type: String, required: true, unique: true }, // TCK-XXXX
   channelId:  { type: String, required: true },
-  messageId:  { type: String, required: true },
+  // messageId của Discord là duy nhất toàn cục → dùng để chống tạo ticket trùng khi có nhiều instance bot
+  messageId:  { type: String, required: true, unique: true },
   imageUrl:   { type: String, required: true },
 
   // Dữ liệu AI bóc tách từ ảnh
