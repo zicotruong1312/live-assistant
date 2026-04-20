@@ -123,7 +123,7 @@ async function analyzeValorantScoreboard(imageUrl) {
       }
     };
 
-    const prompt = `You are a Valorant scoreboard analyzer. Analyze the provided image and return a JSON object.
+    const basePrompt = `You are a Valorant scoreboard analyzer. Analyze the provided image and return a JSON object.
 The game client language might be English or Vietnamese.
 
 Fields to extract:
@@ -139,40 +139,83 @@ Fields to extract:
 Strict JSON format:
 {"map": "string", "mode": "string", "result": "VICTORY|DEFEAT|UNKNOWN", "score": "string", "isRanked": boolean}`;
 
-    const result = await model.generateContent([prompt, imagePart]);
-    const response = await result.response;
-    const raw = response.text().trim();
-    console.log(`[GeminiVision] Raw AI Response: ${raw}`);
+    async function runPrompt(promptText, label) {
+      const result = await model.generateContent([promptText, imagePart]);
+      const response = await result.response;
+      const raw = response.text().trim();
+      console.log(`[GeminiVision] Raw AI Response (${label}): ${raw}`);
 
-    let data;
-    try {
-      data = JSON.parse(raw);
-    } catch (parseErr) {
-      console.error('[GeminiVision] ❌ JSON Parse Error:', parseErr.message);
-      // Fallback: Try regex extraction if JSON mode fails for some reason
-      const jsonMatch = raw.match(/\{[\s\S]*\}/);
-      if (jsonMatch) {
-        data = JSON.parse(jsonMatch[0]);
-      } else {
+      try {
+        return JSON.parse(raw);
+      } catch (parseErr) {
+        console.error(`[GeminiVision] ❌ JSON Parse Error (${label}):`, parseErr.message);
+        const jsonMatch = raw.match(/\{[\s\S]*\}/);
+        if (jsonMatch) return JSON.parse(jsonMatch[0]);
         throw new Error('AI returned invalid JSON format');
       }
     }
 
-    // Double-check isRanked dựa trên danh sách cứng để tránh AI ảo
-    data.map = normalizeMap(data.map);
-    data.mode = normalizeMode(data.mode);
-    data.result = normalizeResult(data.result);
-    data.score = normalizeScore(data.score);
-    data.winLose = data.result === 'VICTORY' ? 'THẮNG' : data.result === 'DEFEAT' ? 'THUA' : 'UNKNOWN';
+    function postNormalize(data) {
+      const out = { ...(data || {}) };
 
-    const modeLower = stripDiacritics(data.mode || '').toLowerCase();
-    if (RANKED_MODES.some(m => modeLower.includes(m))) {
-      data.isRanked = true;
-    } else if (NON_RANKED_MODES.some(m => modeLower.includes(m))) {
-      data.isRanked = false;
+      out.map = normalizeMap(out.map);
+      out.mode = normalizeMode(out.mode);
+      out.result = normalizeResult(out.result);
+      out.score = normalizeScore(out.score);
+      out.winLose = out.result === 'VICTORY' ? 'THẮNG' : out.result === 'DEFEAT' ? 'THUA' : 'UNKNOWN';
+
+      // Coerce isRanked to boolean if model returns string/number
+      if (typeof out.isRanked !== 'boolean') {
+        const v = String(out.isRanked || '').trim().toLowerCase();
+        if (v === 'true' || v === '1' || v === 'yes') out.isRanked = true;
+        else if (v === 'false' || v === '0' || v === 'no') out.isRanked = false;
+      }
+
+      const modeLower = stripDiacritics(out.mode || '').toLowerCase();
+      if (RANKED_MODES.some(m => modeLower.includes(m))) out.isRanked = true;
+      else if (NON_RANKED_MODES.some(m => modeLower.includes(m))) out.isRanked = false;
+      else if (typeof out.isRanked !== 'boolean') out.isRanked = false;
+
+      return out;
     }
 
-    console.log(`[GeminiVision] ✅ Phân tích xong: Map=${data.map}, Mode=${data.mode}, Result=${data.result}, isRanked=${data.isRanked}`);
+    function isMostlyUnknown(d) {
+      const mapUnknown = !d?.map || String(d.map).toLowerCase() === 'unknown';
+      const modeUnknown = !d?.mode || String(d.mode).toLowerCase() === 'unknown';
+      const resUnknown = !d?.result || String(d.result).toUpperCase() === 'UNKNOWN';
+      const scoreUnknown = !d?.score || String(d.score).toLowerCase() === 'unknown';
+      return mapUnknown && modeUnknown && resUnknown && scoreUnknown;
+    }
+
+    let data = postNormalize(await runPrompt(basePrompt, 'base'));
+
+    // Double-check isRanked dựa trên danh sách cứng để tránh AI ảo
+    if (isMostlyUnknown(data)) {
+      const hardPrompt = `You are a Valorant scoreboard OCR specialist.
+Focus ONLY on the top-left and the top-center of the image.
+
+Top-left usually contains the game mode and map line:
+- Vietnamese examples: "DANH VỌNG", "ĐẤU HẠNG", "BẢN ĐỒ - SPLIT"
+- English examples: "COMPETITIVE", "MAP - SPLIT"
+
+Top-center usually contains result and score:
+- Vietnamese: "<number> THẤT BẠI <number>" or "<number> CHIẾN THẮNG <number>"
+- English: "<number> DEFEAT <number>" or "<number> VICTORY <number>"
+
+Rules:
+- "map" MUST be one of: ${KNOWN_MAPS.join(', ')} (best match).
+- "mode": return "Competitive" if you see "DANH VỌNG" or any ranked/competitive word; otherwise return the mode text if visible; else "Unknown".
+- "result": return VICTORY/DEFEAT based on the center word; else UNKNOWN.
+- "score": return "X-Y" using the two numbers around the result word; else "Unknown".
+- "isRanked": true if mode is Competitive (including Vietnamese "DANH VỌNG"/"ĐẤU HẠNG"), otherwise false.
+
+Return STRICT JSON only:
+{"map":"string","mode":"string","result":"VICTORY|DEFEAT|UNKNOWN","score":"string","isRanked":boolean}`;
+
+      data = postNormalize(await runPrompt(hardPrompt, 'retry'));
+    }
+
+    console.log(`[GeminiVision] ✅ Phân tích xong: Map=${data.map}, Mode=${data.mode}, Result=${data.result}, Score=${data.score}, isRanked=${data.isRanked}`);
     return data;
 
   } catch (err) {
