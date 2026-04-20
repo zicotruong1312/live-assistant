@@ -58,34 +58,46 @@ module.exports = {
       // Tạo Ticket ID duy nhất
       const ticketId = `TCK-${Date.now().toString().slice(-5)}`;
 
-      // Lưu vào DB trước bằng dữ liệu thô (để khóa messageId, tránh race condition trên 2 instance)
-      const newMatch = new LiveMatch({
-        ticketId,
-        channelId:       message.channel.id,
-        messageId:       message.id,
-        guildId:         message.guild.id,
-        imageUrl:        attachment.url,
-        voiceSnapshot,
-        selectedPlayers: voiceSnapshot
-      });
-      await newMatch.save();
+      // Sử dụng findOneAndUpdate với $setOnInsert để tạo khóa giả (Atomic Lock) chống Race Condition
+      // Kể cả khi MongoDB bị thiếu Unique Index, thao tác này vẫn đảm bảo chỉ có 1 instance tạo được dữ liệu
+      const lock = await LiveMatch.findOneAndUpdate(
+        { messageId: message.id },
+        {
+          $setOnInsert: {
+            ticketId,
+            channelId:       message.channel.id,
+            guildId:         message.guild.id,
+            imageUrl:        attachment.url,
+            voiceSnapshot,
+            selectedPlayers: voiceSnapshot,
+            status: 'PENDING'
+          }
+        },
+        { upsert: true, new: false } // Trả về document TRƯỚC KHI xử lý
+      );
 
-      // Chỉ reaction khi đã ghi đè DB thành công (nghĩa là instance này được quyền xử lý)
-      await message.react('👀');
+      // Nếu 'lock' trả về một Object, nghĩa là Document này ĐÃ TỒN TẠI (do 1 instance khác vừa tạo xong phần nghìn giây trước)
+      if (lock) return;
 
-      // Sau khi lấy được quyền xử lý, gọi Gemini AI phân tích ảnh
+      // Chỉ reaction khi chắc chắn instance này giành được quyền xử lý
+      await message.react('👀').catch(() => {});
+
+      // Sau khi lấy được quyền, gọi Gemini AI phân tích ảnh
       const extractedData = await analyzeValorantScoreboard(attachment.url);
 
       // Cập nhật lại data thật từ AI
-      newMatch.extractedData = extractedData;
-      await newMatch.save();
+      const completedMatch = await LiveMatch.findOneAndUpdate(
+        { messageId: message.id },
+        { $set: { extractedData } },
+        { new: true }
+      );
 
       // Reaction báo hiệu hoàn tất AI
       await message.reactions.removeAll().catch(() => {});
-      await message.react('✅');
+      await message.react('✅').catch(() => {});
 
       // Auto-post Ticket sang #confirm-result để sếp duyệt
-      await postTicketToConfirmChannel(message.guild, newMatch);
+      await postTicketToConfirmChannel(message.guild, completedMatch);
 
     } catch (err) {
       // Nếu trùng messageId do nhiều instance race-condition → coi như đã xử lý, không cần tạo thêm
